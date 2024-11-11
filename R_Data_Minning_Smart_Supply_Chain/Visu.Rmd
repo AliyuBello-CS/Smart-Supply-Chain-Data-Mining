@@ -1,0 +1,245 @@
+---
+title: "VISU PROj"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+```{r}
+library(rrcov)
+library(nnet)
+library(MASS)
+library(ggplot2)
+library(factoextra)
+library(stats)
+library(ICSNP)
+library(mshap)
+library(mvnormtest)
+library(cluster)
+library(CCA)
+library(GGally)
+```
+
+## Reading the .csv file top R
+```{r cars}
+SupplyC <- read.csv("SupplyChainDataset.csv", TRUE, sep = ",")
+View(SupplyC)
+
+```
+
+## Filtering out the qualitative variable 
+```{r}
+numeric <- sapply(SupplyC, is.numeric)
+numeric
+data_numeric <- SupplyC[numeric]
+View(data_numeric) 
+data_numeric <- data_numeric[colnames(data_numeric)!="ID"]
+View(data_numeric)
+
+```
+
+## Histograms for the quantitative variables. 
+```{r}
+for(j in 1:ncol(data_numeric)){
+  hist(data_numeric[,j],xlab= names(data_numeric)[j],main="")
+}
+```
+
+
+##Boxplots for the qualitative variables 
+```{r}
+barplot(table(SupplyC$Type))
+barplot(table(SupplyC$Customer.Segment))
+```
+
+## Mahalanobis Distinces and Outlier Detection
+```{r}
+scale(data_numeric)
+m = mahalanobis(data_numeric,center=colMeans(data_numeric),cov=var(data_numeric),inverted = TRUE)
+chi=qchisq(p=.05, df=15, lower.tail=FALSE)
+which(m>chi)
+chi
+m
+
+```
+
+```{r}
+scale(data_numeric)
+ndata = data_numeric[, c(-1,-2)]
+c = colMeans(ndata)
+v = var(ndata)
+md = mahalanobis(ndata, center = 4, cov = v, inverted = TRUE) 
+View(md)
+```
+
+```{r}
+##Checking if there are outliers
+sum(is.na(data_numeric))
+```
+
+
+##Hotelling T2 
+```{r}
+##scale(data_numeric)
+x = nor[1:301, ]
+y = nor[302:602, ]
+
+##robust_T=T2.test(x,y)
+##robust <- T2.test(x,y)
+
+ht2=function(x, y) {
+  n=dim(x)[1];    m=dim(y)[1];   p=dim(x)[2]
+  xcov=cov(x);    ycov=cov(y)
+  Sp=(n-1)*xcov+(m-1)*ycov;    Sp=Sp/(n+m-2)
+  xcenter=colMeans(x);    ycenter=colMeans(y)
+  d=xcenter-ycenter
+  T2=t(d)%*%solve(Sp)%*%d
+  T2=T2*n*m/(n+m)
+  F=T2*(n+m-p-1)/(p*(n+m-2))
+  pv=1-pf(F,p,n+m-p-1)
+  list(xcenter=xcenter,ycenter=ycenter,xcov=xcov,
+       ycov=ycov, Sp=Sp,T2=T2,F=F,df=c(p,n+m-p-1),pv=pv)
+}
+ht2(x,y)
+# Pval and t tesy
+#pval = 2*pt(q=abs(t), df, lower.tail = F)
+#qval = qt(0.025,df, lower.tail=F)
+##Pval and Ftest
+#fval = qf(p=alpha, df1=p, df2=n+m-p-1,lower.tail = F)
+#pval=pf(q=2.9, df1=4, df2=59,lower.tail = F)
+
+
+```
+
+##PCA 
+```{r}
+
+#Save the data as a matrix after removing the qualitative variables
+x=as.matrix(data_numeric) 
+
+head(x)
+
+x=scale(x, center = T, scale = T)
+#This is done to standardize the variables as they have different variances
+#which will affect the eigen values severly if not standardized
+
+### Classical PCA
+pc=princomp(x, cor =  T)
+
+summary(pc,loadings = T)
+#The loadings are the correlation between the components and the variables
+
+plot(pc)
+
+##Checking the assumption that sum of eigen values from cor matrix = P = 9
+#after standardizing x
+cx=cor(x) #or =cov(x) since we standardized x already
+e=eigen(cx)
+sum(e$values)
+      
+
+```
+
+##MDS
+```{r}
+d=dist(SupplyC)
+#eg=eigen(cor(data_numeric))
+#cmdscale(d, k = 3)
+
+SupplyC = as.matrix(SupplyC)
+
+pp = isoMDS(d, k = 1)
+pp = isoMDS(d, k = 2)
+pp = isoMDS(d, k = 3)
+pp = isoMDS(d, k = 4)
+pp
+```
+
+
+##DISCRIMINANT ANALYSIS 
+```{r}
+linear <-lda(Type~., SupplyC)
+linear
+
+linear$prior
+linear$counts
+p <- predict(linear, SupplyC)
+ldahist(data = p$x[, 1], g = SupplyC$Type)
+ldahist(data = p$x[, 2], g = SupplyC$Type)
+ldahist(data = p$x[, 3], g = SupplyC$Type)
+library(devtools)
+
+
+```
+
+# Normalizing the Data 
+```{r}
+means <- apply(data_numeric, 2, mean)
+sds <- apply(data_numeric, 2, sd)
+nor <- scale(data_numeric, center = means, scale = sds) 
+## Calculationg the distance matrix
+distance = dist(nor)
+print(distance, digits = 5)
+
+```
+
+
+##CLUSTERING 
+```{r}
+##Heirachial clustering 
+clusters <- hclust(dist(nor), method = "ward.D2")
+plot(clusters)
+rect.hclust(clusters, k=6)
+
+
+##Kmeans Clustering 
+set.seed(123)
+kc<-kmeans(nor,6)
+kc
+clusplot(nor,
+         kc$cluster,
+         color = T,
+         shade = T,
+         labels = 2,
+         lines = 0)
+```
+
+## CANONICAL CORRELATION ANALYSIS
+```{r}
+#colnames(data_numeric)
+#summary(data_numeric)
+##splitting the data
+data_numeric<-as.matrix(data_numeric)
+data_numeric=scale(data_numeric)
+x <- data_numeric[,1:6]
+y <- data_numeric[,7:15]
+cc=cancor(x,y)
+r = cor(data_numeric)
+r11=r[1:2,1:2];        r12=r[1:2,3:4]; 
+r21=t(r12);              r22=r[3:4,3:4]
+
+#Calculating M1 and M2
+m1=solve(r11)%*%r12%*%solve(r22)%*%r21
+m2=solve(r22)%*%r21%*%solve(r11)%*%r12
+
+#Eigen System of M1 and M2
+eigen(m1)
+eigen(m2)
+
+pairs(x)
+pairs(y)
+
+```
+##MEASURES OF ASSOCIATION (CRAMERS'V)
+```{r}
+library(rcompanion)
+data_numeric  =  as.matrix(data_numeric)
+cramerV(data_numeric, ci = TRUE)
+
+
+```
+
